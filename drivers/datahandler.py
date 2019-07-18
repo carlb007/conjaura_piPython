@@ -38,13 +38,14 @@ def set_colour_mode(mode,bias=0):
         if(globalSetup["paletteSize"]==0):
             globalSetup["paletteSize"] = 255
         
-def set_palette(size,data):
+def set_palette(size,data=""):
     globalSetup["paletteSize"] = size
-    if(size % 8 == 0):       
-        if(len(data)/3 == size):
-            paletteData = data
-        else:
-            print("Invalid palette length")
+    if((size+1) % 8 == 0):       
+        if data:
+            if(len(data)/3 == (size+1)):
+                paletteData = data
+            else:
+                print("Invalid palette length")
     else:
         print("Invalid palette size")
 
@@ -142,16 +143,17 @@ def build_header(mode,submode,autoSend=False):
             if(globalSetup["colourMode"]==2):
                 paletteLen = (globalSetup["paletteSize"]+1)*3
                 hBits2_4 = (paletteLen>>8) & 63
-                byte5 = paletteLen & 255
-                print(hBits2_4)
-                print(byte5)
+                byte5 = paletteLen & 255                
             
         elif(submode=="gammaSetup"):
             hBits2_1 = 32
             gammaLen = 768
             if(globalSetup["colourMode"]==1):
-                gammaLen = (32+64+32)*3
-            hBits2_4 = gammaLen>>10
+                if globalSetup["colourBiasHC"]==3:
+                    gammaLen = (32+32+32)
+                else:
+                    gammaLen = (32+64+32)            
+            hBits2_4 = gammaLen>>8 & 63
             byte5 = gammaLen & 255
             
     byte1 = hBits1_1 | hBits2_1 | hBits3and4_1
@@ -162,5 +164,5 @@ def build_header(mode,submode,autoSend=False):
     if(autoSend):
         io.spi_txrx(header)
     
-    return header
+    return [byte1,byte2,byte3,byte4,byte5]
         

@@ -40,6 +40,9 @@ def initialise():
     GPIO.setup(SIG_TO_MCU, GPIO.OUT, initial=GPIO.LOW)
     GPIO.setup(SIG_FROM_MCU, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
     
+    panelpower("off")
+    fan("off")    
+    led("off")
     #GPIO.add_event_detect(SIG_FROM_MCU, GPIO.RISING, callback = mcu_status, bouncetime=1)
 
 def led(colour):
@@ -86,12 +89,18 @@ def spi_txrx(dataArr):
     dataResponse = spi.xfer(dataArr, *params)
     return dataResponse
    
+def ping_mcu():
+    GPIO.output(SIG_TO_MCU, GPIO.HIGH)
+    GPIO.output(SIG_TO_MCU, GPIO.LOW)
+    
+   
 def mcu_wait(tim=5000):
     resp = GPIO.wait_for_edge(SIG_FROM_MCU,GPIO.RISING, timeout=tim)
     if resp is None:
         print("No Response")
     else:
-        print("Response from MCU")
+        pass
+        #print("Response from MCU")
    
 def deinit():
     GPIO.cleanup()
