@@ -1,9 +1,15 @@
 #
 import drivers.spigpio as io
 
+def status_check(state):
+    if(state==True):
+        print(globalSetup["lastError"])
+        raise SystemExit(0)
+    
 panels = []
 paletteData = []
 gammaData = []
+configData = []
 
 globalSetup = {
     "panelCount" : 0,
@@ -14,7 +20,9 @@ globalSetup = {
     "mode":"Startup",
     "dataSegments":0,
     "segmentSize":0,
-    "lastSegmentSize":0
+    "lastSegmentSize":0,
+    "lastError": "None",
+    "halt": False
 }
 
 def calc_data_segments():
@@ -33,10 +41,18 @@ def set_colour_mode(mode,bias=0):
             globalSetup["colourBiasHC"] = 2
         elif(bias==3 or bias=="Even"):
             globalSetup["colourBiasHC"] = 3
+        else:
+            globalSetup["lastError"] = "Invalid BIAS mode"
+            globalSetup["halt"] = True
     elif(mode==0 or mode=="Palette"):
         globalSetup["colourMode"] = 2
         if(globalSetup["paletteSize"]==0):
             globalSetup["paletteSize"] = 255
+    else:
+        globalSetup["lastError"] = "Invalid palette mode"
+        globalSetup["halt"] = True
+    
+    return globalSetup["halt"]
         
 def set_palette(size,data=""):
     globalSetup["paletteSize"] = size
@@ -44,10 +60,14 @@ def set_palette(size,data=""):
         if data:
             if(len(data)/3 == (size+1)):
                 paletteData = data
-            else:
-                print("Invalid palette length")
+            else:                
+                globalSetup["lastError"] = "Invalid palette length"
+                globalSetup["halt"] = True                
     else:
-        print("Invalid palette size")
+        globalSetup["lastError"] = "Invalid palette size"
+        globalSetup["halt"] = True                
+    
+    return globalSetup["halt"]
 
 def set_bam(rate):
     if(rate==8 or rate=="8bit"):
@@ -58,6 +78,12 @@ def set_bam(rate):
         globalSetup["bamBitRate"] = 1
     elif(rate==5 or rate=="5bit"):
         globalSetup["bamBitRate"] = 0
+    else:
+        globalSetup["lastError"] = "Invalid BAM rate"
+        globalSetup["halt"] = True
+    
+    return globalSetup["halt"]
+        
 
 class panel():
     def __init__(self,w,h):
@@ -82,7 +108,121 @@ class panel():
         self.peripheralData = []
         globalSetup["panelCount"] += 1
         panels.append(self)
+
+
+def build_config():
+    allowedWidths = [8,16,24,32]
+    allowedHeights = [8,16,24,32]
+    for thisPanel in panels:
         
+        ###########BYTE1##########
+        bits8_7 = 0
+        bits6_5 = 0
+        bits4_3 = 0
+        bit2 = 0
+        bit1 = 0
+        if(thisPanel.width in allowedWidths):
+            bits8_7 = int((thisPanel.width / 8)-1) << 6
+        else:
+            globalSetup["lastError"] = "Invalid panel width"
+            globalSetup["halt"] = True              
+        
+        if(thisPanel.height in allowedWidths):
+            bits6_5 = (int(thisPanel.height / 8)-1) << 4
+        else:
+            globalSetup["lastError"] = "Invalid panel height"
+            globalSetup["halt"] = True     
+        
+        if(thisPanel.orientation < 4):
+            bits4_3 = thisPanel.orientation << 2
+        else:
+            globalSetup["lastError"] = "Invalid panel orientation"
+            globalSetup["halt"] = True
+        
+        if(thisPanel.scanLines < 2):
+            bit2 = thisPanel.scanLines << 1
+        else:
+            globalSetup["lastError"] = "Invalid panel scanline setup"
+            globalSetup["halt"] = True
+                
+        byte = bits8_7 | bits6_5 | bits4_3 | bit2 | bit1
+        configData.append(byte)
+        
+        ###########BYTE2##########
+        bit8= 0
+        bits7_6 = 0
+        bits5_1 = 0
+        
+        bit8 = thisPanel.ledActive << 7
+        if(thisPanel.throttle < 4):
+            bit7_6 = thisPanel.throttle << 5
+        else:
+            globalSetup["lastError"] = "Invalid panel throttle"
+            globalSetup["halt"] = True
+        
+        byte = bit8 | bits7_6 | bits5_1
+        configData.append(byte)
+        
+        
+        ###########BYTE3##########
+        bit8 = 0
+        bits7_6 = 0
+        bit5 = 0
+        bit4 = 0
+        bit3 = 0
+        bits2_1 = 0
+        
+        bit8 = thisPanel.touchEnabled << 7
+        if(thisPanel.touchChannels < 4):
+            bit7_6 = thisPanel.touchChannels << 5
+        else:
+            globalSetup["lastError"] = "Invalid touch channel count"
+            globalSetup["halt"] = True
+        
+        bit5 = thisPanel.touchSensetivity << 4
+        bit4= thisPanel.edgeActive << 3
+        bit3= thisPanel.edgeThrottle << 2
+        
+        if(thisPanel.edgeDensity < 4):
+            bits2_1 = thisPanel.edgeDensity
+        else:
+            globalSetup["lastError"] = "Invalid edge density"
+            globalSetup["halt"] = True
+        
+        byte = bit8 | bits7_6 | bit5 | bit4 | bit3 | bits2_1
+        configData.append(byte)
+        
+        ###########BYTE4##########
+        
+        bits8_6 = 0
+        bits5_4 = 0
+        bits3_2 = 0
+        bit1 = 0
+        
+        if(thisPanel.peripheralType < 8):
+            bits8_6 = thisPanel.peripheralType << 5
+        else:
+            globalSetup["lastError"] = "Invalid peripheral selection"
+            globalSetup["halt"] = True
+        
+        if(thisPanel.peripheralSettings < 4):
+            bits5_4 = thisPanel.peripheralSettings << 3
+        else:
+            globalSetup["lastError"] = "Invalid peripheral setting"
+            globalSetup["halt"] = True
+        
+        if(thisPanel.peripheralReturnSize < 4):
+            bits3_2 = thisPanel.peripheralReturnSize << 1
+        else:
+            globalSetup["lastError"] = "Invalid peripheral return size"
+            globalSetup["halt"] = True
+            
+        byte = bits8_6 | bits5_4 | bits3_2 | bit1
+        configData.append(byte)
+        
+        
+    return globalSetup["halt"]
+
 def build_header(mode,submode,autoSend=False):
     hBits1_1 = 0
     hBits2_1 = 0
@@ -156,12 +296,21 @@ def build_header(mode,submode,autoSend=False):
             hBits2_4 = gammaLen>>8 & 63
             byte5 = gammaLen & 255
             
+        else:
+            globalSetup["lastError"] = "Invalid sub config mode"
+            globalSetup["halt"] = True    
+            
+    else:
+        globalSetup["lastError"] = "Invalid primary config mode"
+        globalSetup["halt"] = True
+            
     byte1 = hBits1_1 | hBits2_1 | hBits3and4_1
     byte2 = hBits1_2 | hBits2_2
     byte4 = hBits1_4 | hBits2_4
     
     header = [byte1,byte2,byte3,byte4,byte5]
     if(autoSend):
+        status_check(globalSetup["halt"])
         io.spi_txrx(header)
     
     return [byte1,byte2,byte3,byte4,byte5]
