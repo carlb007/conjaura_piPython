@@ -94,7 +94,7 @@ def ping_mcu():
     GPIO.output(SIG_TO_MCU, GPIO.LOW)
     
    
-def mcu_wait(tim=5000):
+def mcu_wait(tim=1000):
     resp = GPIO.wait_for_edge(SIG_FROM_MCU,GPIO.RISING, timeout=tim)
     if resp is None:
         print("No Response")

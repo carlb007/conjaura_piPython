@@ -1,15 +1,49 @@
 #
 import drivers.spigpio as io
 
-def status_check(state):
-    if(state==True):
-        print(globalSetup["lastError"])
-        raise SystemExit(0)
-    
+MAX_SEG_SIZE = 2048 #MCU HAS 16KB AVAILABLE. SET AT 50% FOR NOW UNTIL WE CAN REFINE
+
 panels = []
 paletteData = []
 gammaData = []
 configData = []
+streamData = []
+returnData =[]
+
+def status_check(state):
+    if(state==True):
+        io.led("red")
+        print(globalSetup["lastError"])
+        raise SystemExit(0)
+    
+    
+class panel():
+    def __init__(self,w,h):
+        self.ID = globalSetup["panelCount"] + 1
+        self.width = w
+        self.height = h
+        self.orientation = 0 #UDLR
+        self.scanLines = 0 #0=8, 1=16
+        self.ledActive = True
+        self.throttle = 0 #0=100%, 1=80%, 2= 60%, 3 = 40%
+        self.touchEnabled = True
+        self.touchChannels = 0 #0=w*h/4
+        self.touchSensetivity = 1 #0=4Bit, 1=8Bit
+        self.edgeActive = True
+        self.edgeThrottle = 0 #0=100%, 1=50%
+        self.edgeDensity = 0 #0=3 per 8, 1 = 6 per 8
+        self.peripheralType = 0 #0= NONE
+        self.peripheralSettings = 0 #TBD
+        self.peripheralReturnSize = 0 #TBD
+        self.dataLength = 0;
+        self.bitData = []
+        self.touchData = []
+        self.peripheralData = []
+        globalSetup["panelCount"] += 1
+        panels.append(self)
+    
+    def disableEdgeLights(self):
+        self.edgeActive = False
 
 globalSetup = {
     "panelCount" : 0,
@@ -19,15 +53,69 @@ globalSetup = {
     "bamBitRate":0,
     "mode":"Startup",
     "dataSegments":0,
-    "segmentSize":0,
-    "lastSegmentSize":0,
+    "currentSegment":0,
+    "currentSegmentSize":0,
+    "lastSegStartPanel" : 0,
+    "lastSegEndPanel" : 0,
     "lastError": "None",
     "halt": False
 }
 
-def calc_data_segments():
-    pass
+def calc_panel_data_sizes():
+    if globalSetup["colourMode"]==0:
+        pixelDataSize = 3
+    elif globalSetup["colourMode"]==1:
+        pixelDataSize = 2
+    else:
+        pixelDataSize = 1        
+    for thisPanel in panels:
+        thisDataSize = (thisPanel.width * thisPanel.height)*pixelDataSize
+        thisEdgeSize = 0
+        if thisPanel.edgeActive:
+            if thisPanel.edgeDensity == 0: #3 per 8
+                thisEdgeSize = (((thisPanel.width * 2) + (thisPanel.height *2)) / 8) * 3
+            elif thisPanel.edgeDensity == 1: #6 per 8
+                thisEdgeSize = (((thisPanel.width * 2) + (thisPanel.height *2)) / 8) * 6
+        thisPanel.dataLength = int(thisDataSize + thisEdgeSize)
 
+
+def calc_segment_count():    
+    tallySize= 0
+    segCount = 1#ALWAYS 1 MINIMUM
+    for i in range(0, len(panels)):        
+        if((tallySize + panels[i].dataLength)<MAX_SEG_SIZE):
+            tallySize += panels[i].dataLength
+        else:
+            segCount += 1
+            tallySize = 0
+    globalSetup["dataSegments"] = segCount    
+
+
+def calc_data_segment():  
+    streamData.clear()
+    lastSeg = 0;
+    tallySize = 0
+    globalSetup["lastSegStartPanel"] = globalSetup["lastSegEndPanel"]
+    for i in range(globalSetup["lastSegEndPanel"], len(panels)):
+        thisPanel = panels[i]
+        if((tallySize + thisPanel.dataLength)<MAX_SEG_SIZE):
+            lastSeg += 1
+            tallySize += thisPanel.dataLength
+            streamData.append(thisPanel.bitData)
+        else:
+            break
+    globalSetup["lastSegEndPanel"] += lastSeg    
+    globalSetup["currentSegmentSize"] = tallySize
+    globalSetup["currentSegment"] += 1
+    
+      
+def segment_retstart():
+    globalSetup["lastSegStartPanel"] = 0
+    globalSetup["lastSegEndPanel"] = 0
+    globalSetup["currentSegment"] = 0
+    globalSetup["currentSegmentSize"] = 0
+    
+                
 def set_colour_mode(mode,bias=0):
     if(mode==0 or mode=="TrueColour"):
         globalSetup["colourMode"] = 0
@@ -54,6 +142,7 @@ def set_colour_mode(mode,bias=0):
     
     return globalSetup["halt"]
         
+        
 def set_palette(size,data=""):
     globalSetup["paletteSize"] = size
     if((size+1) % 8 == 0):       
@@ -69,6 +158,7 @@ def set_palette(size,data=""):
     
     return globalSetup["halt"]
 
+
 def set_bam(rate):
     if(rate==8 or rate=="8bit"):
         globalSetup["bamBitRate"] = 3
@@ -83,32 +173,7 @@ def set_bam(rate):
         globalSetup["halt"] = True
     
     return globalSetup["halt"]
-        
-
-class panel():
-    def __init__(self,w,h):
-        self.ID = globalSetup["panelCount"] + 1
-        self.width = w
-        self.height = h
-        self.orientation = 0 #UDLR
-        self.scanLines = 0 #0=8, 1=16
-        self.ledActive = True
-        self.throttle = 0 #0=100%, 1=80%, 2= 60%, 3 = 40%
-        self.touchEnabled = True
-        self.touchChannels = 0 #0=w*h/4
-        self.touchSensetivity = 1 #0=4Bit, 1=8Bit
-        self.edgeActive = True
-        self.edgeThrottle = 0 #0=100%, 1=50%
-        self.edgeDensity = 0 #0=3 per 8, 1 = 6 per 8
-        self.peripheralType = 0 #0= NONE
-        self.peripheralSettings = 0 #TBD
-        self.peripheralReturnSize = 0 #TBD
-        self.bitData = []
-        self.touchData = []
-        self.peripheralData = []
-        globalSetup["panelCount"] += 1
-        panels.append(self)
-
+       
 
 def build_config():
     allowedWidths = [8,16,24,32]
@@ -223,6 +288,7 @@ def build_config():
         
     return globalSetup["halt"]
 
+
 def build_header(mode,submode,autoSend=False):
     hBits1_1 = 0
     hBits2_1 = 0
@@ -234,16 +300,11 @@ def build_header(mode,submode,autoSend=False):
     hBits2_4 = 0    
     byte5 = 0
     
-    if(mode=="data"):
-        hBits1_1 = 0
-        
-        hBits3and4_1 = globalSetup["dataSegments"]
-        
-        hBits2_2 = globalSetup["segmentSize"]>>10
-        byte3 = globalSetup["segmentSize"] & 255
-        
-        hBits2_4 = globalSetup["lastSegmentSize"]>>10
-        byte5 = globalSetup["lastSegmentSize"] & 255
+    if(mode=="data"):              
+        hbits2_2 = globalSetup["currentSegment"]
+        byte3 = globalSetup["dataSegments"]        
+        hBits2_4 = globalSetup["currentSegmentSize"]>>10
+        byte5 = globalSetup["currentSegmentSize"] & 255
         
         
     elif(mode=="address"):
