@@ -3,7 +3,7 @@ import spidev
 import time
 
 spi = spidev.SpiDev()
-params = [8000000,0, 8]
+params = [15600000,0, 8]
 mcuState = "T"
 
 PWR_ACTIVE = 15
@@ -85,22 +85,26 @@ def resetmcu():
     time.sleep(0.1)
     GPIO.output(MCU_RESET, GPIO.HIGH)
     
-def spi_txrx(dataArr):
-    dataResponse = spi.xfer(dataArr, *params)
+def spi_txrx(dataArr):    
+    dataResponse = spi.xfer2(dataArr, *params)
     return dataResponse
    
 def ping_mcu():
     GPIO.output(SIG_TO_MCU, GPIO.HIGH)
     GPIO.output(SIG_TO_MCU, GPIO.LOW)
+
+def halt_until_ready(label=""):
+    #start_time = time.time()
+    #displayed = False
+    while GPIO.input(SIG_FROM_MCU)==False:
+        led("red")
+        #if(time.time() - start_time > 2 and displayed == False):
+            #print(label + "stuck")
+            #displayed = True
+    led("off")
+    #if(time.time() - start_time > 0.1):
+        #print(label+". signal in: ",time.time() - start_time)
     
-   
-def mcu_wait(tim=1000):
-    resp = GPIO.wait_for_edge(SIG_FROM_MCU,GPIO.RISING, timeout=tim)
-    if resp is None:
-        print("No Response")
-    else:
-        pass
-        #print("Response from MCU")
    
 def deinit():
     GPIO.cleanup()

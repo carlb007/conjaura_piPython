@@ -9,13 +9,13 @@ def dummyGamma():
         else:
             gamLength = 32+64+32
     for i in range(gamLength):
-        data.gammaData.append(0)
+        data.gammaData.append(16)
     print("Dummy Gamma Length: ",gamLength)
 
 
 def dummyPalette():
     if data.globalSetup["paletteSize"]>0:
         for i in range((data.globalSetup["paletteSize"]+1)*3):
-            data.paletteData.append(0)
+            data.paletteData.append(8)
         print("Dummy Palette Length: ",(data.globalSetup["paletteSize"]+1)*3)
         print("Dummy Palette Size: ",(data.globalSetup["paletteSize"]+1))

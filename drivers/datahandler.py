@@ -1,7 +1,8 @@
 #
 import drivers.spigpio as io
+import time
 
-MAX_SEG_SIZE = 2048 #MCU HAS 16KB AVAILABLE. SET AT 50% FOR NOW UNTIL WE CAN REFINE
+MAX_SEG_SIZE = 10240#8192 #MCU HAS 16KB AVAILABLE. SET AT 50% FOR NOW UNTIL WE CAN REFINE
 
 panels = []
 paletteData = []
@@ -9,6 +10,7 @@ gammaData = []
 configData = []
 streamData = []
 returnData =[]
+segments =[]
 
 def status_check(state):
     if(state==True):
@@ -37,9 +39,13 @@ class panel():
         self.peripheralReturnSize = 0 #TBD
         self.dataLength = 0;
         self.bitData = []
+        self.edgeData = []
         self.touchData = []
         self.peripheralData = []
         globalSetup["panelCount"] += 1
+        if(self.touchChannels==0):
+            self.touchChannelCount = int((self.width / 4) *(self.height / 4))
+            
         panels.append(self)
     
     def disableEdgeLights(self):
@@ -76,44 +82,43 @@ def calc_panel_data_sizes():
                 thisEdgeSize = (((thisPanel.width * 2) + (thisPanel.height *2)) / 8) * 3
             elif thisPanel.edgeDensity == 1: #6 per 8
                 thisEdgeSize = (((thisPanel.width * 2) + (thisPanel.height *2)) / 8) * 6
-        thisPanel.dataLength = int(thisDataSize + thisEdgeSize)
+        thisPanel.dataLength = int(thisDataSize + (thisEdgeSize*pixelDataSize))
 
 
-def calc_segment_count():    
-    tallySize= 0
-    segCount = 1#ALWAYS 1 MINIMUM
-    for i in range(0, len(panels)):        
-        if((tallySize + panels[i].dataLength)<MAX_SEG_SIZE):
-            tallySize += panels[i].dataLength
-        else:
-            segCount += 1
-            tallySize = 0
-    globalSetup["dataSegments"] = segCount    
+def calc_data_segments():  
+    segments.clear()
+    lastPanel = 0
+    startPanel = 0
+    while lastPanel<globalSetup["panelCount"]:
+        segmentSize = 0
+        start = lastPanel
+        for i in range(start,globalSetup["panelCount"]):
+            thisPanel = panels[i]
+            if((segmentSize + thisPanel.dataLength)<=MAX_SEG_SIZE):
+                lastPanel += 1
+                segmentSize += thisPanel.dataLength
+            else:
+                break
+        segments.append([startPanel,lastPanel-1,segmentSize,[]])
+        startPanel = lastPanel
+    globalSetup["dataSegments"] = len(segments)    
+        
 
-
-def calc_data_segment():  
-    streamData.clear()
-    lastSeg = 0;
-    tallySize = 0
-    globalSetup["lastSegStartPanel"] = globalSetup["lastSegEndPanel"]
-    for i in range(globalSetup["lastSegEndPanel"], len(panels)):
+def create_segment_data(segment):
+    data = []
+    for i in range(segments[segment][0], segments[segment][1]+1):
         thisPanel = panels[i]
-        if((tallySize + thisPanel.dataLength)<MAX_SEG_SIZE):
-            lastSeg += 1
-            tallySize += thisPanel.dataLength
-            streamData.append(thisPanel.bitData)
-        else:
-            break
-    globalSetup["lastSegEndPanel"] += lastSeg    
-    globalSetup["currentSegmentSize"] = tallySize
-    globalSetup["currentSegment"] += 1
-    
-      
-def segment_retstart():
-    globalSetup["lastSegStartPanel"] = 0
-    globalSetup["lastSegEndPanel"] = 0
-    globalSetup["currentSegment"] = 0
-    globalSetup["currentSegmentSize"] = 0
+        data.append(thisPanel.bitData)
+        data.append(thisPanel.edgeData)
+    segments[segment][3] = [item for sublist in data for item in sublist]
+
+
+def send_segment_lengths():
+    data = []
+    for i in range(globalSetup["dataSegments"]):
+        data.append(segments[i][2]>>8 & 255)
+        data.append(segments[i][2] & 255)    
+    io.spi_txrx(data)
     
                 
 def set_colour_mode(mode,bias=0):
@@ -301,11 +306,7 @@ def build_header(mode,submode,autoSend=False):
     byte5 = 0
     
     if(mode=="data"):              
-        hbits2_2 = globalSetup["currentSegment"]
-        byte3 = globalSetup["dataSegments"]        
-        hBits2_4 = globalSetup["currentSegmentSize"]>>10
-        byte5 = globalSetup["currentSegmentSize"] & 255
-        
+        hBits2_2 = globalSetup["dataSegments"]#len(segments)#globalSetup["currentSegment"]    
         
     elif(mode=="address"):
         hBits1_1 = 64
@@ -322,7 +323,7 @@ def build_header(mode,submode,autoSend=False):
             hBits2_1 = 0
             byte3 = globalSetup["panelCount"]
             configDataLen = globalSetup["panelCount"]*4
-            hBits2_4 = configDataLen>>10
+            hBits2_4 = configDataLen>>8 & 63
             byte5 = configDataLen & 255
             
         elif(submode=="colourSetup"):
@@ -343,7 +344,7 @@ def build_header(mode,submode,autoSend=False):
             
             if(globalSetup["colourMode"]==2):
                 paletteLen = (globalSetup["paletteSize"]+1)*3
-                hBits2_4 = (paletteLen>>8) & 63
+                hBits2_4 = paletteLen>>8 & 63
                 byte5 = paletteLen & 255                
             
         elif(submode=="gammaSetup"):
@@ -373,6 +374,12 @@ def build_header(mode,submode,autoSend=False):
     if(autoSend):
         status_check(globalSetup["halt"])
         io.spi_txrx(header)
+    
+    #if(mode=="data"):
+    #    print([byte1,byte2,byte3,byte4,byte5])
+    #if(submode=="panelSetup"):
+    #   print([byte1,byte2,byte3,byte4,byte5])
+    #    time.sleep(2000)
     
     return [byte1,byte2,byte3,byte4,byte5]
         
