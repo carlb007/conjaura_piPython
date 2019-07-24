@@ -3,11 +3,21 @@ import drivers.datahandler as data
 import drivers.colours as colour
 import time
 
-io.initialise() 
+
+io.initialise()
+
+io.panelpower("on")
+#time.sleep(20)
+#io.panelpower("off")
+time.sleep(1)
+io.panelpower("on")
+time.sleep(2)
+
 io.resetmcu()
 io.halt_until_ready()
+time.sleep(.5)
 io.ping_mcu() #CLEAR RETURN SIG
-print("Ready")
+print("LOCAL MCU Ready")
 time.sleep(.1)
 
 
@@ -39,6 +49,33 @@ data.status_check(data.set_colour_mode("TrueColour",""))
 colour.dummyGamma()
 colour.dummyPalette()
 
+
+#######################
+#ENTER ADDRESS MODE (INIT VIA UI)
+#######################
+print("Enter Address Mode? y/n")
+str=input()
+if str=='y':
+    print("start address mode")
+    io.ping_mcu()#PUT INTO HEADER MODE
+    data.build_header("address","request",True)
+    while io.GPIO.input(io.SIG_FROM_MCU)==False:
+        str=input()    
+        if str=='q':
+            print("End Address mode")
+            io.ping_mcu()#PUT INTO HEADER MODE
+            data.build_header("address","finish",True)
+            io.halt_until_ready("Address finish")
+            io.ping_mcu() #CLEAR RETURN SIG
+            print("Finish Address Command")
+            break
+        elif str=='r':
+            print("Reset Address mode")
+            io.ping_mcu()#PUT INTO HEADER MODE
+            data.build_header("address","reset",True)       
+            print("Reset Address Command")
+       
+    
 
 #######################
 #SEND COLOUR MODE HEADER / DATA
@@ -106,7 +143,7 @@ io.ping_mcu() #CLEAR RETURN SIG
 #######################
 start_time = time.time()
 TallyBits = 0
-segsToRun = 6000
+segsToRun = 200
 segmentPacketsSent = 0
 for y in range(segsToRun):    
     #CAPTURE SRC DATA AND INSERT IT INTO PANEL.BITDATA WHEN CURRENT SEGMENT IS SET TO 0 - IE: START OF NEW FRAME
@@ -144,12 +181,9 @@ for y in range(segsToRun):
         io.ping_mcu() #CLEAR RETURN SIG                
         data.globalSetup["currentSegment"] += 1
         
-        
-    elapsed_time = time.time() - start_time
-    if(elapsed_time > 1):
-        print("Avg Throughput: ",TallyBits)        
-        start_time = time.time()
-        TallyBits = 0
-        
+elapsed_time = time.time() - start_time
+print("Avg Throughput: ",int((TallyBits/elapsed_time)/1000),"KB per second")
+print("Bytes: ",TallyBits," In",elapsed_time," seconds")    
 print("Completed ",segmentPacketsSent," segments")
-io.deinit()
+#io.panelpower("off")
+#io.deinit()
