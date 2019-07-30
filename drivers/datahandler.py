@@ -83,6 +83,7 @@ def calc_panel_data_sizes():
             elif thisPanel.edgeDensity == 1: #6 per 8
                 thisEdgeSize = (((thisPanel.width * 2) + (thisPanel.height *2)) / 8) * 6
         thisPanel.dataLength = int(thisDataSize + (thisEdgeSize*pixelDataSize))
+        #print("Panel",thisPanel.dataLength)
 
 
 def calc_data_segments():  
@@ -93,6 +94,7 @@ def calc_data_segments():
         segmentSize = 0
         start = lastPanel
         for i in range(start,globalSetup["panelCount"]):
+            #print(i)
             thisPanel = panels[i]
             if((segmentSize + thisPanel.dataLength)<=MAX_SEG_SIZE):
                 lastPanel += 1
@@ -100,14 +102,17 @@ def calc_data_segments():
             else:
                 break
         segments.append([startPanel,lastPanel-1,segmentSize,[]])
+        #print("Seg",[startPanel,lastPanel-1,segmentSize,[]])
         startPanel = lastPanel
+        #print(startPanel)
     globalSetup["dataSegments"] = len(segments)    
         
 
 def create_segment_data(segment):
     data = []
-    for i in range(segments[segment][0], segments[segment][1]+1):
+    for i in range(segments[segment][0], segments[segment][1]+1):        
         thisPanel = panels[i]
+        #print(i,thisPanel.dataLength,thisPanel.edgeData)
         data.append(thisPanel.bitData)
         data.append(thisPanel.edgeData)
     segments[segment][3] = [item for sublist in data for item in sublist]
@@ -118,6 +123,7 @@ def send_segment_lengths():
     for i in range(globalSetup["dataSegments"]):
         data.append(segments[i][2]>>8 & 255)
         data.append(segments[i][2] & 255)    
+    print(data)
     io.spi_txrx(data)
     
                 
@@ -371,6 +377,7 @@ def build_header(mode,submode,autoSend=False):
     byte4 = hBits1_4 | hBits2_4
     
     header = [byte1,byte2,byte3,byte4,byte5]
+    print(submode,[byte1,byte2,byte3,byte4,byte5])
     if(autoSend):
         status_check(globalSetup["halt"])
         io.spi_txrx(header)

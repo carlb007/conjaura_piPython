@@ -3,7 +3,7 @@ import spidev
 import time
 
 spi = spidev.SpiDev()
-params = [15600000,0, 8]
+params = [10000000,100, 8] #7800000 OK #3900000 OK
 mcuState = "T"
 
 PWR_ACTIVE = 15
@@ -24,7 +24,7 @@ def initialise():
 
     
     spi.open(0,0)
-    spi.max_speed_hz = 10000000
+    spi.max_speed_hz = 7800000
     spi.mode = 0b10
     #NOTE WE USE CPOL HIGH DUE TO FAILSAFE RS485 LEVEL AND TO KEEP THINGS CONSTANT
     spi.bits_per_word = 8
@@ -86,7 +86,7 @@ def resetmcu():
     GPIO.output(MCU_RESET, GPIO.HIGH)
     
 def spi_txrx(dataArr):    
-    dataResponse = spi.xfer2(dataArr, *params)
+    dataResponse = spi.xfer3(dataArr, *params)
     return dataResponse
    
 def ping_mcu():
@@ -94,13 +94,13 @@ def ping_mcu():
     GPIO.output(SIG_TO_MCU, GPIO.LOW)
 
 def halt_until_ready(label=""):
-    #start_time = time.time()
-    #displayed = False
+    start_time = time.time()
+    displayed = False
     while GPIO.input(SIG_FROM_MCU)==False:
         led("red")
-        #if(time.time() - start_time > 2 and displayed == False):
-            #print(label + "stuck")
-            #displayed = True
+        if(time.time() - start_time > 2 and displayed == False):
+            print(label + "stuck")
+            displayed = True
     led("off")
     #if(time.time() - start_time > 0.1):
         #print(label+". signal in: ",time.time() - start_time)
